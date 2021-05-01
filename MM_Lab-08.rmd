@@ -1,0 +1,226 @@
+---
+title: Математическое моделирование. Практика 8
+date: "28 апреля, 2021"
+author: "Трапезникова Анастасия"
+output:
+  html_document:
+    always_allow_html: yes 
+    df_print: default
+    fig_caption: yes
+    fig_height: 4.5
+    fig_width: 9.5
+    highlight: pygments
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+  word_document:
+    df_print: default
+    fig_caption: yes
+    fig_height: 4.5
+    fig_width: 9.5
+    highlight: pygments
+    toc: true
+  pdf_document:
+    html_notebook:
+    code_folding: hide
+    df_print: paged
+    highlight: tango
+    theme: cosmo
+    toc: yes
+---
+
+## **Вариант 9**
+
++--------------------+---------------+-------------------+---------------------------+----------------------------+----------------------------+
+| **Номер варианта** | **Данные**    | **Непрерывный** Y | **Категориальный** Y      | **Объясняющие переменные** | **Метод подгонки моделей** |
++====================+===============+===================+===========================+============================+============================+
+| 9                  | `Auto {ISLR}` | mpg               | high.mpg={1,если mpg\>=29 | остальные, кроме name      | дерево с обрезкой ветвей   |
+|                    |               |                   |                           |                            |                            |
+|                    |               |                   | high.mpg={0,если mpg\<29  |                            |                            |
++--------------------+---------------+-------------------+---------------------------+----------------------------+----------------------------+
+
+Необходимо построить две модели для прогноза на основе дерева решений:\
+\* для непрерывной зависимой переменной;
+
+\* для категориальной зависимой переменной.\
+Данные и переменные указаны в таблице с вариантами.\
+Ядро генератора случайных чисел -- номер варианта.
+
+**Задания** Для каждой модели:\
+1. Указать настроечные параметры метода из своего варианта (например: количество узлов, количество предикторов, скорость обучения).\
+2. Подогнать модель на обучающей выборке (50% наблюдений). Рассчитать MSE на тестовой выборке.\
+3. Перестроить модель с помощью метода, указанного в варианте.\
+4. Сделать прогноз по модели с подобранными в п.3 параметрами на тестовой выборке, оценить его точность и построить график «прогноз-реализация».
+
+**Как сдавать**: прислать на почту преподавателя ссылки:
+
+\* на html-отчёт с видимыми блоками кода (блоки кода с параметром echo = T), размещённый на [rpubs.com](rpubs.com "rpubs.com").
+
+\* на код, генерирующий отчёт, в репозитории на [github.com](github.com "github.com"). В текст отчёта включить постановку задачи и ответы на вопросы задания.
+
+## Решение
+
+Подключаем набор данных Auto
+
+```{r echo=T, message=F}
+library('ISLR')              # набор данных Auto
+library('GGally')            # матричный график разброса ggpairs()
+library('tree')              # деревья tree()
+attach(Auto)
+data(Auto)
+```
+
+Загрузим таблицу с данными по параметрам автомобилей и добавим к ней переменную high.mpg -- "высокий расход топлива" со значениями:
+
+1 если mpg \>= 29
+
+0 если mpg \< 29
+
+```{r echo = T}
+head(Auto)
+
+# новая переменная
+high.mpg <- ifelse(Auto$mpg >= 29, 1, 0)
+high.mpg <- factor(high.mpg, labels = c('yes', 'no'))
+Auto$high.mpg <- high.mpg 
+# матричные графики разброса переменных
+p <- ggpairs(Auto[, c(10, 1:5)], aes(color = high.mpg))
+suppressMessages(print(p))
+
+p <- ggpairs(Auto[, c(10, 6:8)], aes(color = high.mpg))
+suppressMessages(print(p))
+
+# модель бинарного  дерева без переменных mpg и name
+tree.auto <- tree(high.mpg ~ (.-name-mpg), Auto)
+summary(tree.auto)
+
+# график результата
+plot(tree.auto)              # ветви
+text(tree.auto, pretty = 0)  # подписи
+
+# посмотреть всё дерево в консоли
+tree.auto                    
+
+```
+
+Теперь построим дерево на обучающей выборке и оценим ошибку на тестовой.
+
+```{r echo = T}
+# ядро генератора случайных чисел по номеру варианта
+my.seed <- 9
+set.seed(my.seed)
+
+# обучающая выборка
+train <- sample(1:nrow(Auto), 200)
+
+# тестовая выборка
+auto.test <- Auto[-train,]
+high.mpg.test <- high.mpg[-train]
+
+# строим дерево на обучающей выборке
+tree.auto <- tree(high.mpg ~ (.-name-mpg), Auto, subset = train)
+summary(tree.auto)
+
+# делаем прогноз
+tree.pred <- predict(tree.auto, auto.test, type = "class")
+
+# матрица неточностей
+tbl <- table(tree.pred, high.mpg.test)
+tbl
+
+# ACC на тестовой
+acc.test <- sum(diag(tbl))/sum(tbl)
+names(acc.test)[length(acc.test)] <- 'Auto.class.tree.all'
+acc.test
+
+```
+
+Обобщённая характеристика точности: доля верных прогнозов: **0.92**1
+
+Теперь обрезаем дерево, используя в качестве критерия частоту ошибок классификации. Функция cv.tree() проводит кросс-валидацию для выбора лучшего дерева, аргумент prune.misclass означает, что мы минимизируем ошибку классификации.
+
+```{r echo = T}
+set.seed(my.seed)
+cv.auto <- cv.tree(tree.auto, FUN = prune.misclass)
+# имена элементов полученного объекта
+names(cv.auto)
+
+# сам объект
+cv.auto
+
+# графики изменения параметров метода по ходу обрезки дерева ###################
+
+# 1. ошибка с кросс-валидацией в зависимости от числа узлов
+par(mfrow = c(1, 2))
+plot(cv.auto$size, cv.auto$dev, type = "b",
+     ylab = 'Частота ошибок с кросс-вал. (dev)',
+     xlab = 'Число узлов (size)')
+# размер дерева с минимальной ошибкой
+opt.size <- cv.auto$size[cv.auto$dev == min(cv.auto$dev)]
+abline(v = opt.size, col = 'red', 'lwd' = 2)     # соотв. вертикальная прямая
+mtext(opt.size, at = opt.size, side = 1, col = 'red', line = 1)
+
+# 2. ошибка с кросс-валидацией в зависимости от штрафа на сложность
+plot(cv.auto$k, cv.auto$dev, type = "b",
+     ylab = 'Частота ошибок с кросс-вал. (dev)',
+     xlab = 'Штраф за сложность (k)')
+
+```
+
+Как видно на графике слева, минимум частоты ошибок достигается при числе узлов **6**.
+
+Оценим точность дерева с **6** узлами.
+
+```{r echo = T}
+# дерево с 6 узлами
+prune.auto <- prune.misclass(tree.auto, best = 6)
+
+# визуализация
+plot(prune.auto)
+text(prune.auto, pretty = 0)
+
+# прогноз на тестовую выборку
+tree.pred <- predict(prune.auto, auto.test, type = "class")
+
+# матрица неточностей
+tbl <- table(tree.pred, high.mpg.test)
+tbl
+
+# ACC на тестовой
+acc.test <- c(acc.test, sum(diag(tbl))/sum(tbl))
+names(acc.test)[length(acc.test)] <- 'Auto.class.tree.6'
+acc.test
+
+```
+
+Точность этой модели не изменилась и составляет 0.921. Увеличив количество узлов, получим точно такое же дерево.
+
+```{r echo = T}
+# дерево с 7 узлами
+prune.auto <- prune.misclass(tree.auto, best = 7)
+
+# визуализация
+plot(prune.auto)
+text(prune.auto, pretty = 0)
+
+# прогноз на тестовую выборку
+tree.pred <- predict(prune.auto, auto.test, type = "class")
+
+# матрица неточностей
+tbl <- table(tree.pred, high.mpg.test)
+tbl
+
+# ACC на тестовой
+acc.test <- c(acc.test, sum(diag(tbl))/sum(tbl))
+names(acc.test)[length(acc.test)] <- 'Carseats.class.tree.15'
+acc.test
+
+# сбрасываем графические параметры
+par(mfrow = c(1, 1))
+
+```
+
+### *Источники*
+
+1.  *Джеймс Г., Уиттон Д., Хасти Т., Тибширани Р.* Введение в статистическое обучение с примерами на языке R / пер. с англ. С.Э. Мастицкого. -- М.: ДМК Пресс, **2016** -- 450 с. Репозиторий с примерами к книге на русском языке: <https://github.com/ranalytics/islr-ru>

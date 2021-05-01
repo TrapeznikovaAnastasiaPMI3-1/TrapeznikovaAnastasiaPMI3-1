@@ -1,0 +1,240 @@
+---
+title: Математическое моделирование. Практика 9
+date: "28 апреля, 2021"
+author: "Трапезникова Анастасия"
+output:
+  html_document:
+    always_allow_html: yes 
+    df_print: default
+    fig_caption: yes
+    fig_height: 4.5
+    fig_width: 9.5
+    highlight: pygments
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+  word_document:
+    df_print: default
+    fig_caption: yes
+    fig_height: 4.5
+    fig_width: 9.5
+    highlight: pygments
+    toc: true
+  pdf_document:
+    html_notebook:
+    code_folding: hide
+    df_print: paged
+    highlight: tango
+    theme: cosmo
+    toc: yes
+---
+
+Необходимо построить модель на основе SVM для указанной в варианте зависимой переменной.
+
+Данные взять из упражнения №3
+
+Для модели:
+
+1 Отложить 25% наблюдений в тестовую выборку (ядро генератора случайных чисел указано в варианте к упражнению №3).
+
+2 На обучающей выборке (оставшихся 75% наблюдений) сравнить несколько видов ядер SVM по точности модели (AUC) методом сеточного поиска.
+
+3 Для оптимальной формы ядерной функции на обучающей выборке подобрать оптимальное значение настроечных параметров по минимальной ошибке с перекрёстной проверкой (функция tune).
+
+4 Подогнать лучшую модель на всей обучающей выборке. Построить ROC-кривую и рассчитать матрицу неточностей, чувствительность и специфичность.
+
+5 Сделать прогноз по лучшей модели на тестовую выборку, оценить его качество точность по матрице неточностей, чувствительность и специфичность, построить ROC-кривую.
+
+6 Сравнить результаты, которые дал SVM, с результатами, полученными в упражнении 3. Какой из методов оказался лучше?
+
+## **Варианты**
+
+\
+
++-------------+---------------------------+--------------------------------------------+---------------------------------------------+----------------------------+------------+
+| **Вариант** | **Ядро для `set.seed()`** | **Данные**                                 | **Зависимая переменная**                    | **Объясняющие переменные** | **Методы** |
++=============+===========================+============================================+=============================================+============================+============+
+| 9           | 345                       | Default{ISLR} -- долги по кредитным картам | default\                                    | все остальные              | LDA, QDA   |
+|             |                           |                                            | (Yes -- наличие признака, No -- отсутствие) |                            |            |
++-------------+---------------------------+--------------------------------------------+---------------------------------------------+----------------------------+------------+
+
+**Как сдавать**: прислать на почту преподавателя ссылки:
+
+\* на html-отчёт с видимыми блоками кода (блоки кода с параметром echo = T), размещённый на [rpubs.com](rpubs.com "rpubs.com").
+
+\* на код, генерирующий отчёт, в репозитории на [github.com](github.com "github.com"). В текст отчёта включить постановку задачи и ответы на вопросы задания.
+
+## Решение
+
+Подключаем необходимые пакеты и набор данных Default
+
+```{r echo = T}
+library('ISLR')
+library('MASS')
+library('e1071')     # SVM
+data(Default)
+```
+
+Зададим ядро генератора случайных чисел и объём обучающей выборки.
+
+```{r echo = T}
+my.seed <- 345
+train.percent <- 0.75
+```
+
+Исходные данные: набор Default
+
+```{r echo = T}
+# ?Default   # справка по набору данных
+head(Default)
+str(Default)
+
+```
+
+Отбираем наблюдения в обучающую выборку
+
+```{r echo = T}
+set.seed(my.seed)
+inTrain <- sample(seq_along(Default$default),nrow(Default)*train.percent)
+df_train <- Default[inTrain, ]
+df_test <- Default[-inTrain, ]
+
+```
+
+На обучающей выборке (оставшихся 75% наблюдений) сравнить несколько видов ядер SVM по точности модели (AUC) методом сеточного поиска.
+
+[***Сеточный поиск:***]{.ul}
+
+```{r echo = T}
+# обучающие данные
+dat.tr <- data.frame(x = df_train[,-1], y = df_train[,1])
+
+# тестовые данные
+dat.te <- data.frame(x = df_test[,-1], y = df_test[,1])
+
+# параметры алгоритма
+kernel.grid <- c('linear', 'polynomial')
+cost.grid <- seq(1, 20, by = 0.5)
+
+AUC <- matrix(0, length(kernel.grid), length(cost.grid))
+colnames(AUC) <- paste0('cost = ', cost.grid)
+rownames(AUC) <- paste0('kernel = ', kernel.grid)
+
+# SVM 
+for (i in 1:length(kernel.grid)) {
+  print(paste0('Starting ', kernel.grid[i], ' kernel'))
+  for (j in 1:length(cost.grid)) {
+    out <- svm(y ~ ., data = dat.tr, kernel = kernel.grid[i], cost = cost.grid[j])
+    # прогноз на тестовой выборке
+    pred.te <- predict(out, newdata = dat.te)
+    # матрица неточностей
+    tbl <- table(pred.te, dat.te$y)
+    AUC[i, j] <- sum(diag(tbl)) / sum(tbl)
+  }
+}
+
+AUC
+# View(t(AUC))
+# Максимальное значение AUC (area under ROC curve) равно 0.9708 при значении параметров:
+# kernel = 'polynomial'
+# cost = 6
+
+```
+
+Для оптимальной формы ядерной функции на обучающей выборке подобрать оптимальное значение настроечных параметров по минимальной ошибке с перекрёстной проверкой (функция tune).
+
+```{r echo = T}
+
+# делаем перекрёстную проверку, изменяя штраф (аргумент cost)
+set.seed(my.seed)
+tune.out <- tune(svm, y ~ ., data = dat.tr,
+       kernel = "polynomial",
+       ranges = list(cost = c(0.001, 0.01, 0.1, 1, 5, 10, 100)))
+summary(tune.out)
+
+# лучшая модель -- с минимальной ошибкой
+bestmod <- tune.out$best.model
+summary(bestmod)
+
+# делаем прогноз по лучшей модели
+ypred <- predict(bestmod, dat.te)
+
+# матрица неточностей
+table(Прогноз = ypred, Факт = dat.te$y)
+
+# прогноз по модели с cost = 0.01
+svmfit <- svm(y ~ ., data = dat.tr, kernel = "polynomial", cost = .01, scale = FALSE)
+ypred <- predict(svmfit, dat.te)
+# матрица неточностей
+table(Прогноз = ypred, Факт = dat.te$y)
+
+```
+
+Подогнать лучшую модель на всей обучающей выборке. Построить ROC-кривую и рассчитать матрицу неточностей, чувствительность и специфичность. Сделать прогноз по лучшей модели на тестовую выборку, оценить его качество точность по матрице неточностей, чувствительность и специфичность, построить ROC-кривую. 6 Сравнить результаты, которые дал SVM, с результатами, полученными в упражнении 3. Какой из методов оказался лучше?
+
+[***ROC-кривые***]{.ul}
+
+```{r echo = T}
+
+# функция построения ROC-кривой: pred -- прогноз, truth -- факт
+rocplot <- function(pred, truth, ...){
+  require(ROCR)
+  predob = prediction(pred, truth)
+  perf = performance(predob, "tpr", "fpr")
+  plot(perf,...)}
+
+# последняя оптимальная модель
+svmfit.opt <- svm(y ~ ., data = dat.te, kernel = "polynomial", gamma = 2, cost = 1, probability = T)
+
+# матрица неточностей на обучающей (p = 0.5)
+table(Прогноз = predict(svmfit.opt, dat.tr), Факт = dat.tr$y)
+
+# прогноз вероятностей, на основе которых присваивается класс
+fitted.prob <- predict(svmfit.opt, dat.tr, type = "prob",probability = TRUE)
+fitted.prob <- attr(fitted.prob, "probabilities")[, 2]
+
+
+# график для обучающей выборки
+par(mfrow = c(1, 2))
+# ROC-кривая для первой модели
+rocplot(fitted.prob, dat.tr[, "y"], main = "Training Data")
+
+predob = prediction(fitted.prob, dat.tr[, "y"])
+perf = performance(predob, "tpr", "fpr")
+
+# более гибкая модель (gamma выше)
+svmfit.flex = svm(y ~ ., data = dat.tr, kernel = "radial", gamma = 10, cost = 1, probability = T)
+
+# матрица неточностей на обучающей (p = 0.5)
+table(Прогноз = predict(svmfit.flex, dat.tr), Факт = dat.tr$y)
+
+# прогноз вероятностей, на основе которых присваивается класс
+fitted.prob <- predict(svmfit.flex, dat.tr, type = "prob",probability = TRUE)
+fitted.prob <- attr(fitted.prob, "probabilities")[, 2]
+# ROC-кривая для второй модели
+rocplot(fitted.prob, dat.tr[, "y"], add = T, col = "red")
+
+
+
+# график для тестовой выборки
+fitted.prob <- predict(svmfit.opt, dat.te[, ], type = "prob",probability = TRUE)
+fitted.prob <- attr(fitted.prob, "probabilities")[, 2]
+
+# матрица неточностей на тестовой (p = 0.5)
+table(Прогноз = predict(svmfit.opt, dat.tr), Факт = dat.tr$y)
+
+rocplot(fitted.prob, dat.te[, "y"], main = "Test Data")
+fitted.prob <- predict(svmfit.flex, dat.te, type = "prob",probability = TRUE)
+fitted.prob <- attr(fitted.prob, "probabilities")[, 2]
+
+# матрица неточностей на тестовой (p = 0.5)
+table(Прогноз = predict(svmfit.flex, dat.te), Факт = dat.te$y)
+
+rocplot(fitted.prob, dat.te[, "y"], add = T, col = "red")
+
+```
+
+### *Источники*
+
+1.  *Джеймс Г., Уиттон Д., Хасти Т., Тибширани Р.* Введение в статистическое обучение с примерами на языке R / пер. с англ. С.Э. Мастицкого. -- М.: ДМК Пресс, **2016** -- 450 с. Репозиторий с примерами к книге на русском языке: <https://github.com/ranalytics/islr-ru>

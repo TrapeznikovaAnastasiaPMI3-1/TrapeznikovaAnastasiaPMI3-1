@@ -1,0 +1,153 @@
+---
+title: Математическое моделирование. Практика 7
+date: "28 апреля, 2021"
+author: "Трапезникова Анастасия"
+output:
+  html_document:
+    always_allow_html: yes 
+    df_print: default
+    fig_caption: yes
+    fig_height: 4.5
+    fig_width: 9.5
+    highlight: pygments
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+  word_document:
+    df_print: default
+    fig_caption: yes
+    fig_height: 4.5
+    fig_width: 9.5
+    highlight: pygments
+    toc: true
+  pdf_document:
+    html_notebook:
+    code_folding: hide
+    df_print: paged
+    highlight: tango
+    theme: cosmo
+    toc: yes
+---
+
+## **Вариант 9**
+
++--------------------+---------------+--------------------------+----------------------------+-----------------------------------+----------------------------+
+| **Номер варианта** | **Данные**    | **Зависимая переменная** | **Объясняющая переменная** | **Вероятность для второй модели** | **Метод подгонки моделей** |
++====================+===============+==========================+============================+===================================+============================+
+| 9                  | `Auto {ISLR}` | `displacement`           | `horsepowers`              | P(displacement\>280)              | Ступенчатая функция        |
++--------------------+---------------+--------------------------+----------------------------+-----------------------------------+----------------------------+
+
+Необходимо построить две модели: \* зависимости непрерывного отклика от одного непрерывного предиктора; \* зависимости вероятности (логит) от одного непрерывного предиктора.
+
+Для каждой модели:
+
+1.  Указать смысл переменных модели, метод оценки и настроечный параметр (степень полинома, гиперпараметр λ, ширина окна s, число узлов -- в зависимости от метода).
+
+2.  Подогнать модель на всех наблюдениях, меняя значение настроечного параметра.
+
+3.  Обосновать оптимальное значение настроечного параметра подходящим методом (кросс-валидация, ANOVA).
+
+4.  Сделать прогноз на обучающую выборку по лучшей модели: модельные значения и ошибки прогноза.
+
+5.  Построить график с фактическими наблюдениями, модельной кривой и 95% доверительными интервалами прогноза.
+
+В таблице ниже указаны набор данных, столбцы с переменными для модели и метод подгонки.
+
+**Как сдавать**: прислать на почту преподавателя ссылки:
+
+\* на html-отчёт с видимыми блоками кода (блоки кода с параметром echo = T), размещённый на [rpubs.com](rpubs.com "rpubs.com").
+
+\* на код, генерирующий отчёт, в репозитории на [github.com](github.com "github.com"). В текст отчёта включить постановку задачи и ответы на вопросы задания.
+
+## Решение
+
+Подключаем набор данных Auto
+
+```{r echo = T}
+library('ISLR')
+attach(Auto)
+data(Auto)
+```
+
+Зависимая переменная displacement (объём двигателя в кубических дюймах) Объясняющая переменная horsepowers Вероятность для второй модели P(displacement\>280)
+
+```{r echo = T}
+# нарезаем предиктор horsepower на 4 равных интервала
+table(cut(horsepower, 4))
+
+# подгоняем линейную модель на интервалах
+fit <- lm(displacement ~ cut(horsepower, 4), data = Auto)
+round(coef(summary(fit)), 2)
+
+horsepowerlims = range(horsepower)
+horsepower.grid = seq(from = horsepowerlims[1], to = horsepowerlims[2])
+
+# прогноз -- это средние по `displacement` на каждом интервале
+preds.cut <-predict(fit,newdata = list(horsepower = horsepower.grid),se = T)
+
+# интервальный прогноз
+se.bands.cut <-cbind(
+    lower.bound = preds.cut$fit - 2 * preds.cut$se.fit,
+    upper.bound = preds.cut$fit + 2 * preds.cut$se.fit
+  )
+
+```
+
+Воспроизведём график со слайда 7 презентации (рис. 7.2 книги).
+
+```{r echo = T}
+# наблюдения
+plot(horsepower,displacement,xlim = horsepowerlims,cex = 0.5,col = 'darkgrey')
+
+# модель
+lines(horsepower.grid,preds.cut$fit,lwd = 2,col = 'darkgreen')
+
+# доверительные интервалы прогноза
+matlines(x = horsepower.grid,y = se.bands.cut,lwd = 1,col = 'darkgreen',lty = 3)
+
+# заголовок
+title('Ступенчатая функция')
+
+```
+
+Правая часть графика, для вероятности того, что объём двигателя выше 280.
+
+```{r echo = T}
+
+fit <-glm(I(displacement > 280) ~ cut(horsepower, 4),data = Auto,family = 'binomial')
+
+# прогнозы
+preds <-predict(fit,newdata = list(horsepower = horsepower.grid),se = T)
+
+# пересчитываем доверительные интервалы и прогнозы в исходные ЕИ
+pfit <- exp(preds$fit) / (1 + exp(preds$fit))
+se.bands.logit <- cbind(
+  lower.bound = preds$fit - 2 * preds$se.fit,
+  upper.bound = preds$fit + 2 * preds$se.fit
+)
+se.bands <- exp(se.bands.logit) / (1 + exp(se.bands.logit))
+
+# результат - доверительный интервал для вероятности события "Объём двигателя выше 280".
+round(head(se.bands), 3)
+
+# сетка для графика (изображаем вероятности, поэтому интервал изменения y мал)
+plot(horsepower,I(displacement > 280),xlim = horsepowerlims,type = 'n',ylab = 'P(displacement > 280 | horsepower)')
+
+# фактические наблюдения показываем засечками
+points(jitter(horsepower),I((displacement > 280) / 5),cex = 0.5,pch = '|',col = 'darkgrey')
+
+# модель
+lines(horsepower.grid, pfit, lwd = 2, col = 'darkgreen')
+
+# доверительные интервалы
+matlines(horsepower.grid,se.bands,lwd = 1,col = 'darkgreen',lty = 3)
+
+# заголовок
+title('Ступенчатая функция')
+
+```
+
+### *Источники*
+
+1.  *Джеймс Г., Уиттон Д., Хасти Т., Тибширани Р.* Введение в статистическое обучение с примерами на языке R / пер. с англ. С.Э. Мастицкого. -- М.: ДМК Пресс, **2016** -- 450 с. Репозиторий с примерами к книге на русском языке: <https://github.com/ranalytics/islr-ru>
