@@ -1,75 +1,75 @@
-# набор данных Auto
+# РЅР°Р±РѕСЂ РґР°РЅРЅС‹С… Auto
 library('ISLR')
 attach(Auto)
 data(Auto)
 
-# Зависимая переменная displacement (объём двигателя в кубических дюймах)
-# Объясняющая переменная horsepowers
-# Вероятность для второй модели P(displacement>280)
+# Р—Р°РІРёСЃРёРјР°СЏ РїРµСЂРµРјРµРЅРЅР°СЏ displacement (РѕР±СЉС‘Рј РґРІРёРіР°С‚РµР»СЏ РІ РєСѓР±РёС‡РµСЃРєРёС… РґСЋР№РјР°С…)
+# РћР±СЉСЏСЃРЅСЏСЋС‰Р°СЏ РїРµСЂРµРјРµРЅРЅР°СЏ horsepowers
+# Р’РµСЂРѕСЏС‚РЅРѕСЃС‚СЊ РґР»СЏ РІС‚РѕСЂРѕР№ РјРѕРґРµР»Рё P(displacement>280)
 
-# нарезаем предиктор horsepower на 4 равных интервала
+# РЅР°СЂРµР·Р°РµРј РїСЂРµРґРёРєС‚РѕСЂ horsepower РЅР° 4 СЂР°РІРЅС‹С… РёРЅС‚РµСЂРІР°Р»Р°
 table(cut(horsepower, 4))
 
-# подгоняем линейную модель на интервалах
+# РїРѕРґРіРѕРЅСЏРµРј Р»РёРЅРµР№РЅСѓСЋ РјРѕРґРµР»СЊ РЅР° РёРЅС‚РµСЂРІР°Р»Р°С…
 fit <- lm(displacement ~ cut(horsepower, 4), data = Auto)
 round(coef(summary(fit)), 2)
 
 horsepowerlims=range(horsepower)
 horsepower.grid=seq(from=horsepowerlims[1],to=horsepowerlims[2])
 
-# прогноз -- это средние по `displacement` на каждом интервале
+# РїСЂРѕРіРЅРѕР· -- СЌС‚Рѕ СЃСЂРµРґРЅРёРµ РїРѕ `displacement` РЅР° РєР°Р¶РґРѕРј РёРЅС‚РµСЂРІР°Р»Рµ
 preds.cut <- predict(fit, newdata = list(horsepower = horsepower.grid), se = T)
 
-# интервальный прогноз
+# РёРЅС‚РµСЂРІР°Р»СЊРЅС‹Р№ РїСЂРѕРіРЅРѕР·
 se.bands.cut <- cbind(lower.bound = preds.cut$fit - 2*preds.cut$se.fit,
                       upper.bound = preds.cut$fit + 2*preds.cut$se.fit)
 
 
 
-# наблюдения
+# РЅР°Р±Р»СЋРґРµРЅРёСЏ
 plot(horsepower, displacement, xlim = horsepowerlims, cex = 0.5, col = 'darkgrey')
 
-# модель
+# РјРѕРґРµР»СЊ
 lines(horsepower.grid, preds.cut$fit, lwd = 2, col = 'darkgreen')
 
-# доверительные интервалы прогноза
+# РґРѕРІРµСЂРёС‚РµР»СЊРЅС‹Рµ РёРЅС‚РµСЂРІР°Р»С‹ РїСЂРѕРіРЅРѕР·Р°
 matlines(x = horsepower.grid, y = se.bands.cut, lwd = 1, col = 'darkgreen', lty = 3)
 
-# заголовок
-title('Ступенчатая функция')
+# Р·Р°РіРѕР»РѕРІРѕРє
+title('РЎС‚СѓРїРµРЅС‡Р°С‚Р°СЏ С„СѓРЅРєС†РёСЏ')
 
 
 
-# Правая часть графика, для вероятности того, что объём двигателя выше 280.
+# РџСЂР°РІР°СЏ С‡Р°СЃС‚СЊ РіСЂР°С„РёРєР°, РґР»СЏ РІРµСЂРѕСЏС‚РЅРѕСЃС‚Рё С‚РѕРіРѕ, С‡С‚Рѕ РѕР±СЉС‘Рј РґРІРёРіР°С‚РµР»СЏ РІС‹С€Рµ 280.
 
 fit <- glm(I(displacement > 280) ~ cut(horsepower, 4), data = Auto, family = 'binomial')
 
-# прогнозы
+# РїСЂРѕРіРЅРѕР·С‹
 preds <- predict(fit, newdata = list(horsepower = horsepower.grid), se = T)
 
-# пересчитываем доверительные интервалы и прогнозы в исходные ЕИ
+# РїРµСЂРµСЃС‡РёС‚С‹РІР°РµРј РґРѕРІРµСЂРёС‚РµР»СЊРЅС‹Рµ РёРЅС‚РµСЂРІР°Р»С‹ Рё РїСЂРѕРіРЅРѕР·С‹ РІ РёСЃС…РѕРґРЅС‹Рµ Р•Р
 pfit <- exp(preds$fit) / (1 + exp(preds$fit))
 se.bands.logit <- cbind(lower.bound = preds$fit - 2*preds$se.fit,
                         upper.bound = preds$fit + 2*preds$se.fit)
 se.bands <- exp(se.bands.logit)/(1 + exp(se.bands.logit))
 
-# результат - доверительный интервал для вероятности события  "Объём двигателя выше 280".   
+# СЂРµР·СѓР»СЊС‚Р°С‚ - РґРѕРІРµСЂРёС‚РµР»СЊРЅС‹Р№ РёРЅС‚РµСЂРІР°Р» РґР»СЏ РІРµСЂРѕСЏС‚РЅРѕСЃС‚Рё СЃРѕР±С‹С‚РёСЏ  "РћР±СЉС‘Рј РґРІРёРіР°С‚РµР»СЏ РІС‹С€Рµ 280".   
 round(head(se.bands), 3)
 
 
-# сетка для графика (изображаем вероятности, поэтому интервал изменения y мал)
+# СЃРµС‚РєР° РґР»СЏ РіСЂР°С„РёРєР° (РёР·РѕР±СЂР°Р¶Р°РµРј РІРµСЂРѕСЏС‚РЅРѕСЃС‚Рё, РїРѕСЌС‚РѕРјСѓ РёРЅС‚РµСЂРІР°Р» РёР·РјРµРЅРµРЅРёСЏ y РјР°Р»)
 plot(horsepower, I(displacement > 280), xlim = horsepowerlims, type = 'n',
      ylab = 'P(displacement > 280 | horsepower)')
 
-# фактические наблюдения показываем засечками
+# С„Р°РєС‚РёС‡РµСЃРєРёРµ РЅР°Р±Р»СЋРґРµРЅРёСЏ РїРѕРєР°Р·С‹РІР°РµРј Р·Р°СЃРµС‡РєР°РјРё
 points(jitter(horsepower), I((displacement > 280) / 5), cex = 0.5, pch = '|', col = 'darkgrey')
 
-# модель
+# РјРѕРґРµР»СЊ
 lines(horsepower.grid, pfit, lwd = 2, col = 'darkgreen')
 
-# доверительные интервалы
+# РґРѕРІРµСЂРёС‚РµР»СЊРЅС‹Рµ РёРЅС‚РµСЂРІР°Р»С‹
 matlines(horsepower.grid, se.bands, lwd = 1, col = 'darkgreen', lty = 3)
 
-# заголовок
-title('Ступенчатая функция')
+# Р·Р°РіРѕР»РѕРІРѕРє
+title('РЎС‚СѓРїРµРЅС‡Р°С‚Р°СЏ С„СѓРЅРєС†РёСЏ')
 
